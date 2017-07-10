@@ -10,7 +10,7 @@
   (with-open [z (new ZipFile mwb-file)]
     (->> (enumeration-seq (.entries z))
          (filter is-doc-file?)
-         (first)
+         first
          (.getInputStream z)
          xml/parse)))
 (def root-node (get-raw-data "resources/test.mwb"))
