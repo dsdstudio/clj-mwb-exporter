@@ -18,23 +18,21 @@
 root-node
 
 (->> root-node
-     :content
-     first
-     count)
-
-(->> root-node
-     :content
-     first
+     :content first
      :content
      (filter #(= "physicalModels" (->> (:attrs %)
-                                       :key)))
-     first
-     :content)
-
-
-(->> root-node
-     :content
-     first
-     (filter (fn [x]
-               (= "workbench.Document" (:struct-name x)))))
-
+                                       :key))) first
+     :content first
+     :content first
+     :content (filter #(= "schemata" (->> (:attrs %)
+                                          :key))) first
+     :content (filter #(= "db.mysql.Schema" (->> (:attrs %)
+                                                 :struct-name))) first
+     :content (filter #(= "tables" (->> (:attrs %)
+                                        :key))))
+;; TODO 테이블 정보 뽑기 
+(comment
+  tables - columns
+         - indicies
+         - Foreignkeys   
+  )
