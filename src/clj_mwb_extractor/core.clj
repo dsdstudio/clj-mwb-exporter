@@ -1,8 +1,9 @@
 (ns clj-mwb-extractor.core
   (import [java.util.zip ZipInputStream ZipEntry ZipFile]
           [java.io FileInputStream])
-  (:require [clojure.xml :as xml]
-            [clojure.zip :as zip]))
+  (:require [clojure.xml :as xml]))
+
+
 
 (defn is-doc-file? [x]
   (= "document.mwb.xml" (.getName x)))
@@ -19,17 +20,13 @@ root-node
 
 (->> root-node
      :content first
-     :content
-     (filter #(= "physicalModels" (->> (:attrs %)
-                                       :key))) first
+     :content (filter #(= "physicalModels" (get-in % [:attrs :key]))) first
      :content first
      :content first
-     :content (filter #(= "schemata" (->> (:attrs %)
-                                          :key))) first
-     :content (filter #(= "db.mysql.Schema" (->> (:attrs %)
-                                                 :struct-name))) first
-     :content (filter #(= "tables" (->> (:attrs %)
-                                        :key))))
+     :content (filter #(= "schemata" (get-in % [:attrs :key]))) first
+     :content (filter #(= "db.mysql.Schema" (get-in % [:attrs :struct-name]))) first
+     :content (filter #(= "tables" (get-in % [:attrs :key]))))
+
 ;; TODO 테이블 정보 뽑기 
 (comment
   tables - columns
