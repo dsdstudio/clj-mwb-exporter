@@ -35,15 +35,9 @@
   Parsable
   (parse [this]
     (let [child-node (:content node)
-          name (->> child-node
-                    (filter #(= "name" (get-in % [:attrs :key]))) first
-                    :content first)
-          default-characterset-name (->> child-node
-                                       (filter #(= "defaultCharacterSetName" (get-in % [:attrs :key]))) first
-                                       :content first)
-          default-collation-name (->> child-node
-                                       (filter #(= "defaultCollationName" (get-in % [:attrs :key]))) first
-                                       :content first)
+          name (attr-key-> child-node "name")
+          default-characterset-name (attr-key-> child-node "defaultCharacterSetName")
+          default-collation-name (attr-key-> child-node "defaultCollationName")
           tables (->> child-node
                       (filter #(= "tables" (get-in % [:attrs :key]))) first
                       :content
@@ -58,9 +52,7 @@
   Parsable
   (parse [this]
     (let [child-node (:content node)
-          name (->> child-node 
-                    (filter #(= "name" (get-in % [:attrs :key]))) first
-                    :content first)
+          name (attr-key-> child-node "name")
           columns (->> child-node
                        (filter #(= "columns" (get-in % [:attrs :key]))) first
                        :content
@@ -73,9 +65,8 @@
   Parsable
   (parse [this]
     (let [child-node (:content node)
-          name (->> child-node 
-                    (filter #(= "name" (get-in % [:attrs :key]))) first
-                    :content first)]
+          name (attr-key-> child-node "name")
+          ]
       ;; TODO datatype length
       ;; TODO PRIMARY KEY
       ;; TODO UNIQUE
@@ -87,6 +78,18 @@
       
       {:name name})))
 
+(defn attr-key->
+  "노드 리스트에서 매칭되는 [:attrs :key] 값의 textnode를 리턴한다."
+  [list-node name]
+  (let [node (->> list-node 
+                  (filter #(= name (get-in % [:attrs :key]))) first)
+        data-type (get-in node [:attrs :type])
+        v (->> node
+                   :content first)]
+    ;; TODO object datatype에 대한 처리 필요
+    (cond (= data-type "string") v
+          (= data-type "int") (Integer/valueOf v)
+          (= data-type "object") v)))
 (clojure.pprint/pprint (parse (Schemas. root-node)))
 
 ;; Schemas - Schema - tables - table - indexes, columns, foreignkeys
