@@ -16,18 +16,6 @@
 
 (def root-node (get-raw-data "resources/test.mwb"))
 
-root-node
-
-(->> root-node
-     :content first
-     :content (filter #(= "physicalModels" (get-in % [:attrs :key]))) first
-     :content first
-     :content first
-     :content (filter #(= "schemata" (get-in % [:attrs :key]))) first
-     :content (filter #(= "db.mysql.Schema" (get-in % [:attrs :struct-name]))) first ;; 여러개 
-     :content (filter #(= "tables" (get-in % [:attrs :key]))) first ;; 여러개 
-     :content (filter #(= "db.mysql.Table" (get-in % [:attrs :struct-name]))) first)
-
 (defprotocol Parsable
   (parse [this]))
 
