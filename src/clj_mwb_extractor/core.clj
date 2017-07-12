@@ -19,16 +19,34 @@
 (defprotocol Parsable
   (parse [this]))
 
-(deftype Schemas [node]
+(deftype Schemas [root-node]
   Parsable
   (parse [this]
-    (let [schemas (->> root-node
-                       :content first
-                       :content (filter #(= "physicalModels" (get-in % [:attrs :key]))) first
-                       :content first
-                       :content first
+    (let [child-node (->> root-node
+                          :content first
+                          :content (filter #(= "physicalModels" (get-in % [:attrs :key]))) first
+                          :content first
+                          :content first)
+          schemas (->> child-node
                        :content (filter #(= "schemata" (get-in % [:attrs :key]))) first
-                       :content (filter #(= "db.mysql.Schema" (get-in % [:attrs :struct-name]))))]
+                       :content (filter #(= "db.mysql.Schema" (get-in % [:attrs :struct-name]))))
+          data-type-map (->> child-node
+                             :content (filter #(= "simpleDatatypes" (get-in % [:attrs :key]))) first
+                             :content
+                             (map (fn [x]
+                                    (let [id (get-in x [:content 0])]
+                                      {:id id
+                                       :sql-definition -1}))))
+          user-data-types (->> child-node
+                               :content (filter #(= "userDatatypes" (get-in % [:attrs :key]))) first
+                               :content
+                               (map (fn [x]
+                                      (let [id (get-in x [:attrs :id])
+                                            sql-definition (attr-key-> (:content x) "sqlDefinition")
+                                            actual-type (attr-key-> (:content x) "actualType")]
+                                        {:id id
+                                         :sql-definition sql-definition
+                                         :actual-type actual-type}))))]
       (map #(parse (Schema. %)) schemas))))
 
 (deftype Schema [node]
@@ -47,7 +65,6 @@
        :default-collation-name default-collation-name
        :tables tables})))
           
-
 (deftype Table [node]
   Parsable
   (parse [this]
@@ -61,25 +78,47 @@
       ;; TODO foreignkeys
       {:name name
        :columns columns})))
+
 (deftype Column [node]
   Parsable
   (parse [this]
     (let [child-node (:content node)
+          id (get-in node [:attrs :id])
           name (attr-key-> child-node "name")
-          ]
-      ;; TODO datatype length
-      ;; TODO PRIMARY KEY
-      ;; TODO UNIQUE
-      ;; TODO BIN
-      ;; TODO UN
-      ;; TODO ZF
-      ;; TODO AutoIncrement
-      ;; TODO DEFAULT VALUE
-      
-      {:name name})))
+          auto-increment (attr-key-> child-node "autoIncrement")
+          character-set-name (attr-key-> child-node "characterSetName")
+          collation-name (attr-key-> child-node "collationName")
+          datatype-explicit-params (attr-key-> child-node "datatypeExplicitParams")
+          default-value (attr-key-> child-node "defaultValue")
+          default-value-is-null (attr-key-> child-node "defaultValueIsNull")
+          is-not-null (attr-key-> child-node "isNotNull")
+          length (attr-key-> child-node "length")
+          precision (attr-key-> child-node "precision")
+          scale (attr-key-> child-node "scale")
+          comment (attr-key-> child-node "comment")
+          owner (attr-key-> child-node "owner")
 
+          simple-type (attr-key-> child-node "simpleType")
+          user-type (attr-key-> child-node "userType")]
+      {:id id
+       :name name
+       :auto-increment auto-increment
+       :character-set-name character-set-name
+       :collation-name collation-name
+       :datatype-explicit-params datatype-explicit-params
+       :default-value default-value
+       :default-value-is-null default-value-is-null
+       :is-not-null is-not-null
+       :length length
+       :precision precision
+       :scale scale
+       :comment comment
+       :owner owner
+       :data-type (if (nil? simple-type) user-type simple-type)})))
+
+;; dataType Map : simpleDatatypes, userDatatypes
 (defn attr-key->
-  "노드 리스트에서 매칭되는 [:attrs :key] 값의 textnode를 리턴한다."
+  "노드 리스트에서 매칭되는 [:attrs :key] 값의 textnode를 리턴"
   [list-node name]
   (let [node (->> list-node 
                   (filter #(= name (get-in % [:attrs :key]))) first)
@@ -91,6 +130,7 @@
           (= data-type "int") (Integer/valueOf v)
           (= data-type "object") v)))
 (clojure.pprint/pprint (parse (Schemas. root-node)))
+
 
 ;; Schemas - Schema - tables - table - indexes, columns, foreignkeys
 (comment
