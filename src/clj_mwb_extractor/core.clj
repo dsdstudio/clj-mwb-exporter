@@ -65,6 +65,7 @@
 
 (defprotocol Parsable
   (parse [this]))
+
 (deftype Column [node]
   Parsable
   (parse [this]
@@ -105,6 +106,17 @@
                        (some? simple-type) (get sql-simple-type-aliases simple-type)
                        (some? user-type) (get @sql-user-type-aliases user-type))})))
 
+(deftype Index [node]
+  Parsable
+  (parse [this]
+    (let [child-node (:content node)
+          name (attr-key-> child-node "name")
+          index-kind (attr-key-> child-node "indexKind")]
+      (println "NAME => " name)
+      {:name name
+       :index-kind index-kind})))
+          
+
 (deftype Table [node]
   Parsable
   (parse [this]
@@ -113,11 +125,18 @@
           columns (->> child-node
                        (filter #(= "columns" (get-in % [:attrs :key]))) first
                        :content
-                       (map #(parse (Column. %))))]
+                       (map #(parse (Column. %))))
+          indexes (->> child-node
+                       (filter #(= "indices" (get-in % [:attrs :key]))) first
+                       :content
+                       (filter #(= "db.mysql.Index" (get-in % [:attrs :struct-name])))
+                       (map #(parse (Index. %))))]
       ;; TODO indexes
       ;; TODO foreignkeys
       {:name name
-       :columns columns})))
+       :columns columns
+       :indexes indexes
+       :foreignkeys []})))
 
 (deftype Schema [node]
   Parsable
@@ -147,7 +166,6 @@
                        :content (filter #(= "schemata" (get-in % [:attrs :key]))) first
                        :content (filter #(= "db.mysql.Schema" (get-in % [:attrs :struct-name]))))]
       (map #(parse (Schema. %)) schemas))))
-
 
 (defn is-doc-file? [x]
   (= "document.mwb.xml" (.getName x)))
@@ -183,9 +201,9 @@
          Schemas.
          parse)))
 
-(pprint (get-mwb-dsl "resources/test.mwb"))
+(get-mwb-dsl "resources/test.mwb")
 
-(pprint @sql-user-type-aliases)
+;; (pprint @sql-user-type-aliases)
 
 ;; Schemas - Schema - tables - table - indexes, columns, foreignkeys
 (comment
