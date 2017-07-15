@@ -139,6 +139,25 @@
        :index-type index-type
        :index-kind index-kind})))
 
+(deftype ForeignKey [node columns]
+  Parsable
+  (parse [this]
+    (let [child-node (:content node)
+          name (attr-key-> child-node "name")
+          delete-rule (attr-key-> child-node "deleteRule")
+          update-rule (attr-key-> child-node "updateRule")
+          ref-table-id (attr-key-> child-node "referencedTable")
+          ref-columns (->> child-node
+                           (filter #(= "columns" (get-in % [:attrs :key]))) first
+                           :content
+                           (map (fn [x]
+                                  (get-in x [:content]))))]
+      {:name name
+       :ref-columns ref-columns
+       :ref-table-id ref-table-id
+       :delete-rule delete-rule
+       :update-rule update-rule})))
+
 (deftype Table [node]
   Parsable
   (parse [this]
@@ -148,17 +167,20 @@
                        (filter #(= "columns" (get-in % [:attrs :key]))) first
                        :content
                        (map #(parse (Column. %))))
-          indexes (->> child-node
+          indices (->> child-node
                        (filter #(= "indices" (get-in % [:attrs :key]))) first
                        :content
                        (filter #(= "db.mysql.Index" (get-in % [:attrs :struct-name])))
-                       (map #(parse (Index. % columns))))]
-      ;; TODO indexes
-      ;; TODO foreignkeys
+                       (map #(parse (Index. % columns))))
+          foreign-keys (->> child-node
+                            (filter #(= "foreignKeys" (get-in % [:attrs :key]))) first
+                            :content
+                            (filter #(= "db.mysql.ForeignKey" (get-in % [:attrs :struct-name])))
+                            (map #(parse (ForeignKey. % columns))))]
       {:name name
        :columns columns
-       :indexes indexes
-       :foreignkeys []})))
+       :indices indices
+       :foreign-keys foreign-keys})))
 
 (deftype Schema [node]
   Parsable
@@ -223,9 +245,6 @@
          Schemas.
          parse)))
 
-(get-mwb-dsl "resources/test.mwb")
-
-;; (pprint @sql-user-type-aliases)
 
 ;; Schemas - Schema - tables - table - indexes, columns, foreignkeys
 (comment
