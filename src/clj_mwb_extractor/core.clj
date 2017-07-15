@@ -2,7 +2,8 @@
   (import [java.util.zip ZipInputStream ZipEntry ZipFile]
           [java.io FileInputStream])
   (:require [clojure.xml :as xml]
-            [clojure.pprint :refer [pprint]]))
+            [clojure.pprint :refer [pprint]])
+  (:gen-class))
 
 (defonce sql-simple-type-aliases
   {"com.mysql.rdbms.mysql.datatype.tinyint" "TINYINT"
@@ -106,16 +107,37 @@
                        (some? simple-type) (get sql-simple-type-aliases simple-type)
                        (some? user-type) (get @sql-user-type-aliases user-type))})))
 
-(deftype Index [node]
+(deftype Index [node columns]
   Parsable
   (parse [this]
     (let [child-node (:content node)
           name (attr-key-> child-node "name")
-          index-kind (attr-key-> child-node "indexKind")]
-      (println "NAME => " name)
+          comment (attr-key-> child-node "comment")
+          unique (attr-key-> child-node "unique")
+          is-primary (attr-key-> child-node "isPrimary")
+          index-kind (attr-key-> child-node "indexKind")
+          index-type (attr-key-> child-node "indexType")
+          column-data (->> child-node
+                           (filter #(= "columns" (get-in % [:attrs :key]))) first
+                           :content
+                           (filter #(= "db.mysql.IndexColumn" (get-in % [:attrs :struct-name])))
+                           (map (fn [x]
+                                  (let [child-node (:content x)
+                                        id (attr-key-> child-node "referencedColumn")
+                                        name (->> (filter (fn [x] (= id (:id x))) columns)
+                                                  first
+                                                  :name)
+                                        descend (attr-key-> child-node "descend")]
+                                    {:name name
+                                     :descend descend}))))]
+
       {:name name
+       :comment comment
+       :unique unique
+       :column-data column-data
+       :is-primary is-primary
+       :index-type index-type
        :index-kind index-kind})))
-          
 
 (deftype Table [node]
   Parsable
@@ -130,7 +152,7 @@
                        (filter #(= "indices" (get-in % [:attrs :key]))) first
                        :content
                        (filter #(= "db.mysql.Index" (get-in % [:attrs :struct-name])))
-                       (map #(parse (Index. %))))]
+                       (map #(parse (Index. % columns))))]
       ;; TODO indexes
       ;; TODO foreignkeys
       {:name name
@@ -197,7 +219,7 @@
 (defn get-mwb-dsl [file-name]
   (let [root-node (parse-xml file-name)]
     (reset! sql-user-type-aliases (extract-metadata root-node))
-    (->> root-node 
+    (->> root-node
          Schemas.
          parse)))
 
@@ -211,3 +233,6 @@
          - indicies
          - Foreignkeys
   )
+
+(defn -main [& args]
+  (pprint (get-mwb-dsl "resources/test.mwb")))
