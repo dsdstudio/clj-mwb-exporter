@@ -49,7 +49,10 @@
    "com.mysql.rdbms.mysql.datatype.enum" "ENUM"
    "com.mysql.rdbms.mysql.datatype.set" "SET"})
 (def sql-user-type-aliases (atom {}))
-  
+
+(def table-map (atom {}))
+(def column-map (atom {}))
+
 ;; dataType Map : simpleDatatypes, userDatatypes
 (defn attr-key->
   "노드 리스트에서 매칭되는 [:attrs :key] 값의 textnode를 리턴"
@@ -59,7 +62,6 @@
         data-type (get-in node [:attrs :type])
         v (->> node
                    :content first)]
-    ;; TODO object datatype에 대한 처리 필요
     (cond (= data-type "string") v
           (= data-type "int") (Integer/valueOf v)
           (= data-type "object") v)))
@@ -67,12 +69,13 @@
 (defprotocol Parsable
   (parse [this]))
 
-(deftype Column [node]
+(deftype Column [node table-name]
   Parsable
   (parse [this]
     (let [child-node (:content node)
           id (get-in node [:attrs :id])
           name (attr-key-> child-node "name")
+          table-name table-name
           auto-increment (attr-key-> child-node "autoIncrement")
           character-set-name (attr-key-> child-node "characterSetName")
           collation-name (attr-key-> child-node "collationName")
@@ -87,25 +90,29 @@
           owner (attr-key-> child-node "owner")
 
           simple-type (attr-key-> child-node "simpleType")
-          user-type (attr-key-> child-node "userType")]
-      {:id id
-       :name name
-       :auto-increment auto-increment
-       :character-set-name character-set-name
-       :collation-name collation-name
-       :datatype-explicit-params datatype-explicit-params
-       :default-value default-value
-       :default-value-is-null default-value-is-null
-       :is-not-null is-not-null
-       :length length
-       :precision precision
-       :scale scale
-       :comment comment
-       :owner owner
-       :data-type (if (nil? simple-type) user-type simple-type)
-       :sql-type-def (cond
-                       (some? simple-type) (get sql-simple-type-aliases simple-type)
-                       (some? user-type) (get @sql-user-type-aliases user-type))})))
+          user-type (attr-key-> child-node "userType")
+          return-data {:id id
+                       :name name
+                       :table-name table-name
+                       :auto-increment auto-increment
+                       :character-set-name character-set-name
+                       :collation-name collation-name
+                       :datatype-explicit-params datatype-explicit-params
+                       :default-value default-value
+                       :default-value-is-null default-value-is-null
+                       :is-not-null is-not-null
+                       :length length
+                       :precision precision
+                       :scale scale
+                       :comment comment
+                       :owner owner
+                       :data-type (if (nil? simple-type) user-type simple-type)
+                       :sql-type-def (cond
+                                       (some? simple-type) (get sql-simple-type-aliases simple-type)
+                                       (some? user-type) (get @sql-user-type-aliases user-type))}]
+      (swap! column-map assoc id return-data)
+      (println "COLUMN =>" id (count @column-map))
+      return-data)))
 
 (deftype Index [node columns]
   Parsable
@@ -139,7 +146,7 @@
        :index-type index-type
        :index-kind index-kind})))
 
-(deftype ForeignKey [node columns]
+(deftype ForeignKey [node]
   Parsable
   (parse [this]
     (let [child-node (:content node)
@@ -147,12 +154,29 @@
           delete-rule (attr-key-> child-node "deleteRule")
           update-rule (attr-key-> child-node "updateRule")
           ref-table-id (attr-key-> child-node "referencedTable")
-          ref-columns (->> child-node
+          ref-table (get @table-map ref-table-id)
+          ref-table-name (:name ref-table)
+          fk-columns (->> child-node
                            (filter #(= "columns" (get-in % [:attrs :key]))) first
                            :content
                            (map (fn [x]
-                                  (get-in x [:content]))))]
+                                  (let [column-id (first (get-in x [:content]))
+                                        column (get @column-map column-id)]
+                                    {:column-id column-id
+                                     :column-name (:name column)
+                                     :table-name (:table-name column)}))))
+          ref-columns (->> child-node
+                           (filter #(= "referencedColumns" (get-in % [:attrs :key]))) first
+                           :content
+                           (map (fn [x]
+                                  (let [column-id (first (get-in x [:content]))
+                                        column (get @column-map column-id)]
+                                    {:column-id column-id
+                                     :column-name (:name column)
+                                     :table-name (:table-name column)}))))]
+      
       {:name name
+       :fk-columns fk-columns
        :ref-columns ref-columns
        :ref-table-id ref-table-id
        :delete-rule delete-rule
@@ -163,10 +187,11 @@
   (parse [this]
     (let [child-node (:content node)
           name (attr-key-> child-node "name")
+          id (get-in node [:attrs :id])
           columns (->> child-node
                        (filter #(= "columns" (get-in % [:attrs :key]))) first
                        :content
-                       (map #(parse (Column. %))))
+                       (map #(parse (Column. % name))))
           indices (->> child-node
                        (filter #(= "indices" (get-in % [:attrs :key]))) first
                        :content
@@ -176,11 +201,14 @@
                             (filter #(= "foreignKeys" (get-in % [:attrs :key]))) first
                             :content
                             (filter #(= "db.mysql.ForeignKey" (get-in % [:attrs :struct-name])))
-                            (map #(parse (ForeignKey. % columns))))]
-      {:name name
-       :columns columns
-       :indices indices
-       :foreign-keys foreign-keys})))
+                            (map #(parse (ForeignKey. %))))
+          return-data {:name name
+                       :id id
+                       :columns columns
+                       :indices indices
+                       :foreign-keys foreign-keys}]
+      (swap! table-map assoc id return-data)
+      return-data)))
 
 (deftype Schema [node]
   Parsable
@@ -245,6 +273,13 @@
          Schemas.
          parse)))
 
+(def r (get-mwb-dsl "resources/test.mwb"))
+(->> r
+     first
+     :tables
+     (filter #(= "hostel_reserv" (:name %)))
+     first
+     :foreign-keys)
 
 ;; Schemas - Schema - tables - table - indexes, columns, foreignkeys
 (comment
