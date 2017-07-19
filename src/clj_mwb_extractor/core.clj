@@ -49,7 +49,6 @@
    "com.mysql.rdbms.mysql.datatype.enum" "ENUM"
    "com.mysql.rdbms.mysql.datatype.set" "SET"})
 (def sql-user-type-aliases (atom {}))
-
 (def table-map (atom {}))
 (def column-map (atom {}))
 
@@ -68,6 +67,9 @@
 
 (defprotocol Parsable
   (parse [this]))
+
+(defprotocol Writable
+  (write [this]))  
 
 (deftype Column [node table-name]
   Parsable
@@ -111,7 +113,6 @@
                                        (some? simple-type) (get sql-simple-type-aliases simple-type)
                                        (some? user-type) (get @sql-user-type-aliases user-type))}]
       (swap! column-map assoc id return-data)
-      (println "COLUMN =>" id (count @column-map))
       return-data)))
 
 (deftype Index [node columns]
@@ -137,7 +138,6 @@
                                         descend (attr-key-> child-node "descend")]
                                     {:name name
                                      :descend descend}))))]
-
       {:name name
        :comment comment
        :unique unique
@@ -239,7 +239,9 @@
                        :content (filter #(= "db.mysql.Schema" (get-in % [:attrs :struct-name]))))]
       (map #(parse (Schema. %)) schemas))))
 
-(defn is-doc-file? [x]
+(defn is-doc-file?
+  "문서 정보파일인지 판단하는 predicate"
+  [x]
   (= "document.mwb.xml" (.getName x)))
 
 (defn parse-xml
@@ -252,7 +254,9 @@
          (.getInputStream z) ;; ZipEntry에서 stream을 뽑아냄 
          xml/parse))) ;; xml로 파싱 
 
-(defn extract-metadata [root-node]
+(defn extract-metadata
+  "document.mwb.xml에서 mysql 데이터타입 참조용 맵을 만들어낸다"
+  [root-node]
   (->> root-node
        :content first
        :content (filter #(= "physicalModels" (get-in % [:attrs :key]))) first
@@ -266,27 +270,20 @@
                        actual-type (attr-key-> (:content x) "actualType")]
                    (assoc m id sql-definition))) {})))
 
-(defn get-mwb-dsl [file-name]
+(defn get-mwb-dsl
+  "mwb를 파싱하여 export하기 좋은 자료구조로 재구성한다. "
+  [file-name]
   (let [root-node (parse-xml file-name)]
     (reset! sql-user-type-aliases (extract-metadata root-node))
     (->> root-node
          Schemas.
          parse)))
 
-(def r (get-mwb-dsl "resources/test.mwb"))
-(->> r
-     first
-     :tables
-     (filter #(= "hostel_reserv" (:name %)))
-     first
-     :foreign-keys)
-
 ;; Schemas - Schema - tables - table - indexes, columns, foreignkeys
 (comment
   tables - columns
          - indicies
-         - Foreignkeys
-  )
+         - Foreignkeys)
 
 (defn -main [& args]
   (pprint (get-mwb-dsl "resources/test.mwb")))
