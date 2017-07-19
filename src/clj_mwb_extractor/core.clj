@@ -1,8 +1,8 @@
 (ns clj-mwb-extractor.core
-  (import [java.util.zip ZipInputStream ZipEntry ZipFile]
-          [java.io FileInputStream])
   (:require [clojure.xml :as xml]
             [clojure.pprint :refer [pprint]])
+  (:import [java.util.zip ZipInputStream ZipEntry ZipFile]
+           [java.io FileInputStream])
   (:gen-class))
 
 (defonce sql-simple-type-aliases
@@ -182,7 +182,7 @@
        :delete-rule delete-rule
        :update-rule update-rule})))
 
-(deftype Table [node]
+(deftype Table [node schema-name]
   Parsable
   (parse [this]
     (let [child-node (:content node)
@@ -204,6 +204,7 @@
                             (map #(parse (ForeignKey. %))))
           return-data {:name name
                        :id id
+                       :schema-name schema-name
                        :columns columns
                        :indices indices
                        :foreign-keys foreign-keys}]
@@ -220,7 +221,7 @@
           tables (->> child-node
                       (filter #(= "tables" (get-in % [:attrs :key]))) first
                       :content
-                      (map #(parse (Table. %))))]
+                      (map #(parse (Table. % name))))]
       {:name name
        :default-characterset-name default-characterset-name
        :default-collation-name default-collation-name
@@ -237,7 +238,9 @@
           schemas (->> child-node
                        :content (filter #(= "schemata" (get-in % [:attrs :key]))) first
                        :content (filter #(= "db.mysql.Schema" (get-in % [:attrs :struct-name]))))]
-      (map #(parse (Schema. %)) schemas))))
+      (map #(parse (Schema. %)) schemas)))
+  Writable
+  (write [this]))
 
 (defn is-doc-file?
   "문서 정보파일인지 판단하는 predicate"
