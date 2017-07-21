@@ -318,19 +318,41 @@
         comment (cond
                   (nil? (:comment column)) ""
                   :else (str "COMMENT " (:comment column)))]
-    ;; TODO auto_increment PRIMARY KEY, CONSTRAINT(FK), INDEX
+    ;; TODO auto_increment CONSTRAINT(FK)
     (->> ["\t" column-name type-def nullable default-value]
          (clojure.string/join " "))))
+
+(defn write-index-columns-sql [column-data]
+  (->> column-data
+       (map #(str
+              (wrap-quot (:name %))
+              " "
+              (cond
+                (= 1 (:descend %)) "DESC"
+                :else "ASC")))
+       (clojure.string/join ",\n")))
+  
+(defn write-index-sql [indices]
+  (->> indices
+       (map
+        (fn [x]
+          (cond
+            (= "PRIMARY" (:index-type x)) (str "\tPRIMARY KEY "
+                                               (->> (:column-data x)
+                                                    write-index-columns-sql
+                                                    wrap-paren))
+            :else (str "\tINDEX " (wrap-quot (:name x))))))))
 
 (defn write-table-sql [table]
   (let [table-name (:name table)
         schema-name (:schema-name table)
+        indices (write-index-sql (:indices table))
         columns (->> (:columns table)
-                     (map write-column-sql)
-                     (clojure.string/join ",\n"))]
+                     (map write-column-sql))]
     (str
      "CREATE TABLE " (wrap-quot schema-name) "." (wrap-quot table-name) " "
-     (wrap-newline-paren columns)
+     (wrap-newline-paren (->> (into indices columns )
+                              (clojure.string/join ",\n")))
      ";")))
 
 ;; Schemas - Schema - tables - table - indexes, columns, foreignkeys
