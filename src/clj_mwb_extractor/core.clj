@@ -108,6 +108,7 @@
                        :scale scale
                        :comment comment
                        :owner owner
+                       :is-not-simple-type (not (nil? simple-type))
                        :data-type (if (nil? simple-type) user-type simple-type)
                        :sql-type-def (cond
                                        (some? simple-type) (get sql-simple-type-aliases simple-type)
@@ -281,6 +282,56 @@
     (->> root-node
          Schemas.
          parse)))
+
+
+(defn wrap-quot [x]
+  (str \` x \`))
+(defn wrap-paren [x]
+  (str "(" x ")"))
+(defn wrap-newline-paren [x]
+  (str "(\n" x ")"))
+(defn write-schema-sql [schema]
+  (let [schema-name (:name schema)
+        default-characterset-name (:default-characterset-name schema)
+        default-collation-name (:default-collation-name schema)]
+    (str
+     "CREATE DATABASE "
+     (wrap-quot schema-name) " "
+     "DEFAULT CHARACTER SET " default-characterset-name " "
+     "DEFAULT COLLATE " default-collation-name ";")))
+
+(defn write-column-sql [column]
+  (let [column-name (wrap-quot (:name column))
+        length (:length column)
+        type (:sql-type-def column)
+        type-def (str type
+                      (cond
+                        (and (> length 0) (:is-not-simple-type column)) (wrap-paren length)
+                        (= "ENUM" type) (:datatype-explicit-params column)
+                        :else ""))
+        nullable (cond
+                   (= 1 (:is-not-null column)) "NOT NULL"
+                   :else "NULL")
+        default-value (cond
+                        (not (nil? (:default-value column))) (str "DEFAULT " (:default-value column))
+                        :else "")
+        comment (cond
+                  (nil? (:comment column)) ""
+                  :else (str "COMMENT " (:comment column)))]
+    ;; TODO auto_increment PRIMARY KEY, CONSTRAINT(FK), INDEX
+    (->> ["\t" column-name type-def nullable default-value]
+         (clojure.string/join " "))))
+
+(defn write-table-sql [table]
+  (let [table-name (:name table)
+        schema-name (:schema-name table)
+        columns (->> (:columns table)
+                     (map write-column-sql)
+                     (clojure.string/join ",\n"))]
+    (str
+     "CREATE TABLE " (wrap-quot schema-name) "." (wrap-quot table-name) " "
+     (wrap-newline-paren columns)
+     ";")))
 
 ;; Schemas - Schema - tables - table - indexes, columns, foreignkeys
 (comment
