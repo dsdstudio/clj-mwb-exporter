@@ -68,9 +68,6 @@
 (defprotocol Parsable
   (parse [this]))
 
-(defprotocol Writable
-  (write [this]))  
-
 (deftype Column [node table-name schema-name]
   Parsable
   (parse [this]
@@ -241,9 +238,7 @@
           schemas (->> child-node
                        :content (filter #(= "schemata" (get-in % [:attrs :key]))) first
                        :content (filter #(= "db.mysql.Schema" (get-in % [:attrs :struct-name]))))]
-      (map #(parse (Schema. %)) schemas)))
-  Writable
-  (write [this]))
+      (map #(parse (Schema. %)) schemas))))
 
 (defn is-doc-file?
   "문서 정보파일인지 판단하는 predicate"
@@ -384,6 +379,18 @@
                               (clojure.string/join ",\n")))
      ";")))
 
+(defn print-stdout [file]
+  (->> (get-mwb-dsl file)
+       (map (fn [x]
+              (->> x
+                   write-schema-sql
+                   println)
+              (->> (:tables x)
+                   (map #(println (write-table-sql %)))
+                   doall)))
+       doall))
+
+
 ;; Schemas - Schema - tables - table - indexes, columns, foreignkeys
 (comment
   tables - columns
@@ -391,4 +398,5 @@
          - Foreignkeys)
 
 (defn -main [& args]
-  (pprint (get-mwb-dsl "resources/test.mwb")))
+  (print-stdout "resources/test.mwb"))
+
