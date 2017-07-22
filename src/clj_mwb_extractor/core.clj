@@ -128,15 +128,14 @@
                            (filter #(= "columns" (get-in % [:attrs :key]))) first
                            :content
                            (filter #(= "db.mysql.IndexColumn" (get-in % [:attrs :struct-name])))
-                           (map (fn [x]
-                                  (let [child-node (:content x)
-                                        id (attr-key-> child-node "referencedColumn")
-                                        name (->> (filter (fn [x] (= id (:id x))) columns)
-                                                  first
-                                                  :name)
-                                        descend (attr-key-> child-node "descend")]
-                                    {:name name
-                                     :descend descend}))))]
+                           (map #(let [child-node (:content %)
+                                      id (attr-key-> child-node "referencedColumn")
+                                      name (->> (filter (fn [x] (= id (:id x))) columns)
+                                                first
+                                                :name)
+                                      descend (attr-key-> child-node "descend")]
+                                  {:name name
+                                   :descend descend})))]
       {:name name
        :comment comment
        :unique unique
@@ -158,23 +157,21 @@
           fk-columns (->> child-node
                            (filter #(= "columns" (get-in % [:attrs :key]))) first
                            :content
-                           (map (fn [x]
-                                  (let [column-id (first (get-in x [:content]))
-                                        column (get @column-map column-id)]
-                                    {:column-id column-id
-                                     :column-name (:name column)
-                                     :table-name (:table-name column)}))))
+                           (map #(let [column-id (first (get-in % [:content]))
+                                       column (get @column-map column-id)]
+                                   {:column-id column-id
+                                    :column-name (:name column)
+                                    :table-name (:table-name column)})))
           ref-columns (->> child-node
                            (filter #(= "referencedColumns" (get-in % [:attrs :key]))) first
                            :content
-                           (map (fn [x]
-                                  (let [column-id (first (get-in x [:content]))
-                                        column (get @column-map column-id)]
+                           (map #(let [column-id (first (get-in % [:content]))
+                                       column (get @column-map column-id)]
 
-                                    {:column-id column-id
-                                     :column-name (:name column)
-                                     :schema-name (:schema-name column)
-                                     :table-name (:table-name column)}))))]
+                                   {:column-id column-id
+                                    :column-name (:name column)
+                                    :schema-name (:schema-name column)
+                                    :table-name (:table-name column)})))]
       {:name name
        :fk-columns fk-columns
        :ref-columns ref-columns
@@ -328,17 +325,15 @@
                 (= 1 (:descend %)) "DESC"
                 :else "ASC")))
        (clojure.string/join ",\n")))
-  
+
 (defn write-index-sql [indices]
   (->> indices
-       (map
-        (fn [x]
-          (cond
-            (= "PRIMARY" (:index-type x)) (str "\tPRIMARY KEY "
-                                               (->> (:column-data x)
-                                                    write-index-columns-sql
-                                                    wrap-paren))
-            :else (str "\tINDEX " (wrap-quot (:name x))))))))
+       (map #(cond
+               (= "PRIMARY" (:index-type %)) (str "\tPRIMARY KEY "
+                                                  (->> (:column-data %)
+                                                       write-index-columns-sql
+                                                       wrap-paren))
+               :else (str "\tINDEX " (wrap-quot (:name %)))))))
 
 (defn write-fk-columns-sql [column-data]
   (wrap-paren (->> column-data
