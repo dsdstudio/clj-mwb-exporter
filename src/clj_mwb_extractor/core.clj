@@ -71,7 +71,7 @@
 (defprotocol Writable
   (write [this]))  
 
-(deftype Column [node table-name]
+(deftype Column [node table-name schema-name]
   Parsable
   (parse [this]
     (let [child-node (:content node)
@@ -95,6 +95,7 @@
           user-type (attr-key-> child-node "userType")
           return-data {:id id
                        :name name
+                       :schema-name schema-name
                        :table-name table-name
                        :auto-increment auto-increment
                        :character-set-name character-set-name
@@ -172,10 +173,11 @@
                            (map (fn [x]
                                   (let [column-id (first (get-in x [:content]))
                                         column (get @column-map column-id)]
+
                                     {:column-id column-id
                                      :column-name (:name column)
+                                     :schema-name (:schema-name column)
                                      :table-name (:table-name column)}))))]
-      
       {:name name
        :fk-columns fk-columns
        :ref-columns ref-columns
@@ -189,10 +191,10 @@
     (let [child-node (:content node)
           name (attr-key-> child-node "name")
           id (get-in node [:attrs :id])
-          columns (->> child-node
+          columns (doall (->> child-node
                        (filter #(= "columns" (get-in % [:attrs :key]))) first
                        :content
-                       (map #(parse (Column. % name))))
+                       (map #(parse (Column. % name schema-name)))))
           indices (->> child-node
                        (filter #(= "indices" (get-in % [:attrs :key]))) first
                        :content
@@ -300,6 +302,7 @@
      "DEFAULT CHARACTER SET " default-characterset-name " "
      "DEFAULT COLLATE " default-collation-name ";")))
 
+;; TODO auto_increment
 (defn write-column-sql [column]
   (let [column-name (wrap-quot (:name column))
         length (:length column)
@@ -318,7 +321,6 @@
         comment (cond
                   (nil? (:comment column)) ""
                   :else (str "COMMENT " (:comment column)))]
-    ;; TODO auto_increment CONSTRAINT(FK)
     (->> ["\t" column-name type-def nullable default-value]
          (clojure.string/join " "))))
 
@@ -343,15 +345,42 @@
                                                     wrap-paren))
             :else (str "\tINDEX " (wrap-quot (:name x))))))))
 
+(defn write-fk-columns-sql [column-data]
+  (wrap-paren (->> column-data
+       (map #(str
+              (wrap-quot (:column-name %))))
+       (clojure.string/join ","))))
+(defn write-fk-references-sql [column-data]
+  (->> column-data
+       (map #(str
+              (wrap-quot (:schema-name %)) "." (wrap-quot (:table-name %)) " "
+              (wrap-paren (wrap-quot (:column-name %)))))
+       (clojure.string/join ",")))
+
+
+;; TODO CONSTRAINT(FK)
+(defn write-fk-sql [fk]
+  (let [constraint (str "\tCONSTRAINT " (wrap-quot (:name fk)) " ")
+        fk-columns (:fk-columns fk)
+        fk (str "\t\tFOREIGN KEY " (write-fk-columns-sql (:fk-columns fk)) "\n"
+                "\t\tREFERENCES " (write-fk-references-sql (:ref-columns fk)) "\n"
+                "\t\tON DELETE " (:delete-rule fk) "\n"
+                "\t\tON UPDATE " (:update-rule fk) )]
+    (->> [constraint fk]
+       (clojure.string/join "\n"))))
+
 (defn write-table-sql [table]
   (let [table-name (:name table)
         schema-name (:schema-name table)
         indices (write-index-sql (:indices table))
         columns (->> (:columns table)
-                     (map write-column-sql))]
+                     (map write-column-sql))
+        foreign-keys (->> (:foreign-keys table)
+                          (map write-fk-sql))]
     (str
      "CREATE TABLE " (wrap-quot schema-name) "." (wrap-quot table-name) " "
-     (wrap-newline-paren (->> (into indices columns )
+     (wrap-newline-paren (->> [columns indices foreign-keys]
+                              flatten
                               (clojure.string/join ",\n")))
      ";")))
 

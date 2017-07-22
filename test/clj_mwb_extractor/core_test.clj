@@ -7,8 +7,9 @@
     (let [r (doall (get-mwb-dsl "resources/test.mwb"))
           schema (->> r first)
           tables (->> r first :tables)
-          table (->> tables
-                     second)]
+          table (doall (->> tables
+                     second))]
+;;      (println (:foreign-keys table))
       (println (write-schema-sql schema))
       (println (write-table-sql table))
       (is (= 1 1)))))
