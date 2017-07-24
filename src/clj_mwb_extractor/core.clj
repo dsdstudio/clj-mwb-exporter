@@ -385,6 +385,18 @@
                    doall)))
        doall))
 
+(defn export-sql-file [mwb-file out-file]
+  (with-open [w (clojure.java.io/writer out-file)]
+    (->> (get-mwb-dsl mwb-file)
+         (map (fn [x]
+                (->> x
+                     write-schema-sql
+                     (.write w))
+                (.write w "\n")
+                (->> (:tables x)
+                     (map #(.write w (str (write-table-sql %) "\n")))
+                     doall)))
+         doall)))
 
 ;; Schemas - Schema - tables - table - indexes, columns, foreignkeys
 (comment
@@ -392,6 +404,18 @@
          - indicies
          - Foreignkeys)
 
+
+(defn- print-usage []
+  (->> ["java -jar exporter.jar <mwb-file> <out-file>"
+        "example : java -jar exporter.jar test.mwb test.sql"]
+       (clojure.string/join "\n")
+       println))
+
 (defn -main [& args]
-  (print-stdout "resources/test.mwb"))
+  (cond
+    (< 0 (count args)) (let [mwb-file (first args)
+                             out-file (second args)]
+                         (export-sql-file mwb-file out-file))
+    :default (print-usage)))
+
 
