@@ -374,7 +374,7 @@
      (wrap-newline-paren (->> [columns indices foreign-keys]
                               flatten
                               (clojure.string/join ",\n")))
-     " ENGINE = " (:table-engine table)
+     "\n ENGINE = " (:table-engine table)
      ";")))
 
 (defn print-stdout [file]
