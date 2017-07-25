@@ -185,6 +185,7 @@
     (let [child-node (:content node)
           name (attr-key-> child-node "name")
           id (get-in node [:attrs :id])
+          table-engine (attr-key-> child-node "tableEngine")
           columns (doall (->> child-node
                        (filter #(= "columns" (get-in % [:attrs :key]))) first
                        :content
@@ -201,6 +202,7 @@
                             (map #(parse (ForeignKey. %))))
           return-data {:name name
                        :id id
+                       :table-engine table-engine
                        :schema-name schema-name
                        :columns columns
                        :indices indices
@@ -289,7 +291,7 @@
         default-characterset-name (:default-characterset-name schema)
         default-collation-name (:default-collation-name schema)]
     (str
-     "CREATE DATABASE "
+     "CREATE DATABASE IF NOT EXISTS "
      (wrap-quot schema-name) " "
      "DEFAULT CHARACTER SET " default-characterset-name " "
      "DEFAULT COLLATE " default-collation-name ";")))
@@ -368,10 +370,11 @@
         foreign-keys (->> (:foreign-keys table)
                           (map write-fk-sql))]
     (str
-     "CREATE TABLE " (wrap-quot schema-name) "." (wrap-quot table-name) " "
+     "CREATE TABLE IF NOT EXISTS " (wrap-quot schema-name) "." (wrap-quot table-name) " "
      (wrap-newline-paren (->> [columns indices foreign-keys]
                               flatten
                               (clojure.string/join ",\n")))
+     " ENGINE = " (:table-engine table)
      ";")))
 
 (defn print-stdout [file]
@@ -397,13 +400,6 @@
                      (map #(.write w (str (write-table-sql %) "\n")))
                      doall)))
          doall)))
-
-;; Schemas - Schema - tables - table - indexes, columns, foreignkeys
-(comment
-  tables - columns
-         - indicies
-         - Foreignkeys)
-
 
 (defn- print-usage []
   (->> ["java -jar exporter.jar <mwb-file> <out-file>"
