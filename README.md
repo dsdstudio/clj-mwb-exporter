@@ -20,6 +20,7 @@ $ java -jar exporter.jar test.mwb test.sql
 
 ```shell
 $ lein uberjar 
+```
 
 ## 실행 
 
