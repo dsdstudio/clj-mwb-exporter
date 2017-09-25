@@ -24,6 +24,7 @@ $ lein uberjar
 
 ## 실행 
 
+```
 $ java -jar target/clj-mwb-extractor-0.1.0-standalone.jar resources/test.mwb t.sql
 ```
 
